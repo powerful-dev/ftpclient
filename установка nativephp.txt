@@ -1,0 +1,8 @@
+composer create-project laravel/laravel ./
+composer require nativephp/laravel nativephp/electron --dev
+php artisan native:install
+php artisan native:serve
+
+Sandbox for Linux:
+sudo chown root:root ./vendor/nativephp/electron/resources/js/node_modules/electron/dist/chrome-sandbox
+sudo chmod 4755 ./vendor/nativephp/electron/resources/js/node_modules/electron/dist/chrome-sandbox

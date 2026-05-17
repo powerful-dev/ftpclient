@@ -1,0 +1,22 @@
+{
+    "$schema": "https://json.schemastore.org/package.json",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "vite build",
+        "dev": "vite",
+        "build:php": "composer install --optimize-autoloader && php artisan native:migrate && php artisan db:seed"
+    },
+    "devDependencies": {
+        "@tailwindcss/vite": "^4.0.0",
+        "axios": "^1.11.0",
+        "concurrently": "^9.0.1",
+        "laravel-vite-plugin": "^2.0.0",
+        "sass-embedded": "^1.83.1",
+        "tailwindcss": "^4.0.0",
+        "vite": "^7.0.4"
+    },
+    "dependencies": {
+        "bootstrap-icons": "^1.13.1"
+    }
+}
