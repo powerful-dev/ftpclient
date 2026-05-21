@@ -59,6 +59,11 @@ class PathHelper
         return $path;
     }
 
+    public static function join(string ...$parts): string
+    {
+        return self::normalize(implode(DIRECTORY_SEPARATOR, $parts));
+    }
+
     public static function toUnixPath(string $windowsPath): string
     {
 

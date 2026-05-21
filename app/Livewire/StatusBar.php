@@ -197,6 +197,32 @@ class StatusBar extends Component
                 );
             },
 
+            'file.renamed' => function ($event) {
+                $path = $event['path'] ?? null;
+
+                if (!$path) {
+                    return;
+                }
+
+                $path = PathHelper::normalize($path);
+
+                if ($connectionId = ($event['connection_id'] ?? null)) {
+
+                    $this->connectionService()
+                        ->forgetConnectionCache(
+                            $connectionId, 
+                            $path
+                        );
+                }
+
+                $this->dispatch('modal.close');
+                $this->dispatch('refresh-file-explorer', $path, connectionId: $connectionId);
+            },
+
+            'rename.error' => function ($event) {
+                $this->dispatch('rename-error', $event['message'] ?? __('Error'));
+            },
+
             'file.error' => function ($event) {
 
                 $this->dispatch(

@@ -21,6 +21,7 @@ class ModalManager extends Component
         'connections',
         'conflicts',
         'elevation-required',
+        'rename',
     ];
 
     public ?string $activeModal = null;

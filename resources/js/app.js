@@ -85,17 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (item.classList.contains('file')) {
-                item.classList.add('opening');
-
-                Livewire.dispatchTo('file-explorer', 'openFile', {
-                    openInExplorer: false
-                });
-
-                const off = Livewire.on('file-opened', ({ path }) => {
-
-                    item.classList.remove('opening');
-                    off();
-                });
+                ActionHelper.open('file-explorer', { openInExplorer: false });
                 return;
             }
 
@@ -203,16 +193,26 @@ window.ActionHelper = {
 
         if (items.length !== 1) return;
 
-        const sourcePanel = panelId.split('-')[0];
+        const sourcePanelId = panelId;
+        const sourcePanel = sourcePanelId.split('-')[0];
+
+        const targetPanel = sourcePanel === 'left' ? 'right' : 'left';
+        const targetPanelId = targetPanel + '-panel';
 
         const payload = {
             type: 'open',
             items,
             sourcePanel,
+            targetPanel,
+            targetPath: null,
+            sourcePath: getPanelPath(sourcePanelId),
+            targetBasePath: getPanelPath(targetPanelId),
             openInExplorer,
         };
 
-        Livewire.dispatchTo(component, 'handleAction', {payload: payload});
+        Livewire.dispatchTo(component, 'handleAction', {
+            payload: payload
+        });
     },
 
     changeDirectory(component, params = {}) {

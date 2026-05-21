@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Helpers\PathHelper;
 use Native\Laravel\Facades\Shell;
 use League\Flysystem\Filesystem;
+use App\Support\TempDirectory;
 
 class FileOpenerService
 {
@@ -24,7 +25,8 @@ class FileOpenerService
         array $file,
         bool $openInExplorer = false,
         ?string $taskId = null,
-        ?Filesystem $fs = null
+        ?Filesystem $fs = null,
+        array $options = []
     ): void {
 
         $path = $file['path'] ?? null;
@@ -35,7 +37,7 @@ class FileOpenerService
 
         // remote → temp
         if ($fs) {
-            $path = $this->downloadToTemp($file, $fs, $taskId);
+            $path = $this->downloadToTemp($file, $fs, $taskId, $options);
             if (!$path) {
                 return;
             }
@@ -91,10 +93,13 @@ class FileOpenerService
     private function downloadToTemp(
         array $file,
         Filesystem $fs,
-        ?string $taskId
+        ?string $taskId,
+        array $options = []
     ): ?string {
 
-        $baseTempDir = storage_path('app/temp');
+        $baseTempDir = PathHelper::normalize(
+            TempDirectory::path() . '/' . $taskId
+        );
 
         if (!is_dir($baseTempDir)) {
             mkdir($baseTempDir, 0755, true);
@@ -103,22 +108,12 @@ class FileOpenerService
         $fileName = basename($file['path']);
         $localPath = PathHelper::normalize($baseTempDir . '/' . $fileName);
 
-        if (is_file($localPath)) {
-            try {
-                @unlink($localPath);
-            } catch (\Throwable $e) {
-                logger('file_delete_failed', [
-                    'path' => $localPath,
-                    'error' => $e->getMessage()
-                ]);
-            }
-        }
-
         $this->downloadService->download(
             files: [$file],
             localDest: $baseTempDir,
             fs: $fs,
-            taskId: $taskId
+            taskId: $taskId,
+            options: $options
         );
 
         return is_file($localPath) ? $localPath : null;

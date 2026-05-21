@@ -81,6 +81,7 @@ class FileExplorer extends Component
         'openContextMenu',
         'closeContextMenu',
         'executeElevatedAction',
+        'rename' => 'renameItem',
     ];
 
 
@@ -395,6 +396,7 @@ class FileExplorer extends Component
             match ($type) {
                 FileActionType::CREATE_DIRECTORY => $this->openCreateDirectoryModal(),
                 FileActionType::CREATE_FILE      => $this->openCreateFileModal(),
+                FileActionType::RENAME           => $this->openRenameModal(),
                 default => null,
             };
 
@@ -620,6 +622,70 @@ class FileExplorer extends Component
         ]);
     }
 
+    public function openRenameModal(): void
+    {
+        $this->closeContextMenu();
+
+        if ($this->activePanel !== $this->panel) {
+            return;
+        }
+
+        $selected = $this->selected[$this->panel] ?? [];
+
+        if (count($selected) !== 1) {
+            return;
+        }
+
+        $item = $selected[0];
+
+        $currentDir = PathHelper::normalize($this->getPath());
+
+        $path = $currentDir . "/". $item['name'];
+
+        $this->dispatch(
+            'openModal',
+            modal: 'rename',
+            payload: [
+                'panel' => $this->panel,
+                'path' => $path,
+                'name' => $item['name'],
+            ]
+        );
+    }
+
+    public function renameItem(string $panel, string $newName, string $oldPath): void
+    {
+        if ($panel !== $this->panel) {
+            return;
+        }
+
+        $connectionId = null;
+
+        if (
+            $this->panel === 'right' &&
+            $connection = $this->connectionService->getConnection()
+        ) {
+            $connectionId = $connection['id'];
+        }
+
+        $oldPath = PathHelper::normalize($oldPath);
+
+        $newPath = PathHelper::join(
+            dirname($oldPath),
+            $newName
+        );
+
+        $this->commandDispatcher->dispatchSimple([
+            'type' => 'rename',
+            'connection_id' => $connectionId,
+            'panel' => $panel,
+            'payload' => [
+                'old_path' => $oldPath,
+                'new_path' => $newPath,
+            ],
+        ]);
+    }
+
     public function initConnection(string $operationId): void
     {
         if ($this->panel !== 'right') {
@@ -747,6 +813,13 @@ class FileExplorer extends Component
                     'open',
                     ['openInExplorer' => true],
                     $isEmpty
+                ),
+
+                $this->menuItem(
+                    'Rename',
+                    'fileAction',
+                    ['type' => FileActionType::RENAME->value],
+                    ! $isSingle
                 ),
 
                 $this->menuItem(

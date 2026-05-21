@@ -274,6 +274,8 @@ class JobWorker extends WorkerCore
 
                             'create_file' => $this->handleCreateFile($command),
 
+                            'rename' => $this->handleRename($command),
+
                             default => false
                         };
 
@@ -939,6 +941,68 @@ class JobWorker extends WorkerCore
                         'target' => $path,
                         'connection_id' => $command['connection_id'] ?? null,
                         'message' => $e->getMessage(),
+                    ]);
+
+                    throw $e;
+                }
+            }
+        );
+    }
+
+    private function handleRename(array $command): bool
+    {
+        $oldPath = $command['payload']['old_path'];
+        $newPath = $command['payload']['new_path'];
+
+        return $this->runWithConnection(
+            $command,
+            function ($ctx) use ($oldPath, $newPath, $command) {
+
+                try {
+
+                    if ($ctx?->fs) {
+
+                        $encodedOld = PathHelper::encode($oldPath);
+                        $encodedNew = PathHelper::encode($newPath);
+
+                        if (
+                            $ctx->fs->fileExists($encodedNew) ||
+                            $ctx->fs->directoryExists($encodedNew)
+                        ) {
+                            throw new RuntimeException('Target already exists');
+                        }
+
+                        $ctx->fs->move($encodedOld, $encodedNew);
+
+                    } else {
+
+                        if (file_exists($newPath)) {
+                            throw new RuntimeException('Target already exists');
+                        }
+
+                        if (!rename($oldPath, $newPath)) {
+                            throw new RuntimeException('Failed to rename');
+                        }
+                    }
+
+                    app(EventService::class)->emit([
+                        'event' => 'file.renamed',
+                        'type' => 'rename',
+                        'panel' => $command['panel'] ?? null,
+                        'path' => dirname($oldPath),
+                        'connection_id' => $command['connection_id'] ?? null,
+                    ]);
+
+                    return true;
+
+                } catch (Throwable $e) {
+
+                    app(EventService::class)->emit([
+                        'event' => 'rename.error',
+                        'type' => 'rename',
+                        'panel' => $command['panel'] ?? null,
+                        'message' => "11111: " .  $e->getMessage(),
+                        'connection_id' => $command['connection_id'] ?? null,
                     ]);
 
                     throw $e;

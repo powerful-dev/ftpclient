@@ -7,6 +7,7 @@ enum FileActionType: string
     case COPY = 'copy';
     case MOVE = 'move';
     case DELETE = 'delete';
+    case RENAME = 'rename';
 
     case CREATE_DIRECTORY = 'createDirectory';
     case CREATE_FILE = 'createFile';
@@ -17,7 +18,8 @@ enum FileActionType: string
     {
         return match ($this) {
             self::CREATE_DIRECTORY,
-            self::CREATE_FILE => true,
+            self::CREATE_FILE,
+            self::RENAME => true,
             default => false,
         };
     }

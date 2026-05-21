@@ -123,6 +123,14 @@ class FileDeleteService
 
                     $fs->deleteDirectory($item->path());
 
+                    $this->updateTask(function (&$task) use ($item) {
+
+                        $this->progress()->advanceItem(
+                            $task,
+                            $item->path()
+                        );
+                    });
+
                 } catch (\Throwable $e) {
 
                     $this->addTaskError(
@@ -138,6 +146,14 @@ class FileDeleteService
                 try {
 
                     $fs->delete($item->path());
+
+                    $this->updateTask(function (&$task) use ($item) {
+
+                        $this->progress()->advanceItem(
+                            $task,
+                            $item->path()
+                        );
+                    });
 
                 } catch (\Throwable $e) {
 
@@ -194,48 +210,103 @@ class FileDeleteService
     private function deleteLocalDirectory(string $path): bool
     {
         $this->from = $path;
+
         $success = true;
 
         $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($path, \RecursiveDirectoryIterator::SKIP_DOTS),
+            new \RecursiveDirectoryIterator(
+                $path,
+                \RecursiveDirectoryIterator::SKIP_DOTS
+            ),
             \RecursiveIteratorIterator::CHILD_FIRST
         );
 
         foreach ($iterator as $item) {
+
             $itemPath = $item->getPathname();
 
             if ($item->isFile()) {
+
                 try {
+
                     if (unlink($itemPath)) {
+
                         $this->updateTask(function (&$task) use ($itemPath) {
-                            $this->progress()->advanceItem($task, $itemPath);
+
+                            $this->progress()->advanceItem(
+                                $task,
+                                $itemPath
+                            );
                         });
 
                     } else {
+
                         $success = false;
                     }
+
                 } catch (\Throwable $e) {
+
                     $success = false;
 
-                    $this->addTaskError("Failed to delete file: {$itemPath}");
+                    $this->addTaskError(
+                        "Failed to delete file: {$itemPath}"
+                    );
                 }
-            } else {
+
+                continue;
+            }
+
+            try {
+
                 if (@rmdir($itemPath)) {
+
                     $this->updateTask(function (&$task) use ($itemPath) {
-                        $this->progress()->advanceItem($task, $itemPath);
+
+                        $this->progress()->advanceItem(
+                            $task,
+                            $itemPath
+                        );
                     });
+
                 } else {
+
                     $success = false;
                 }
+
+            } catch (\Throwable $e) {
+
+                $success = false;
+
+                $this->addTaskError(
+                    "Failed to delete directory: {$itemPath}"
+                );
             }
         }
 
-        if (@rmdir($path)) {
-            $this->updateTask(function (&$task) use ($itemPath) {
-                $this->progress()->advanceItem($task, $itemPath);
-            });
-        } else {
+        try {
+
+            if (@rmdir($path)) {
+
+                $this->updateTask(function (&$task) use ($path) {
+
+                    $this->progress()->advanceItem(
+                        $task,
+                        $path
+                    );
+                });
+
+            } else {
+
+                $success = false;
+            }
+
+        } catch (\Throwable $e) {
+
             $success = false;
+
+            $this->addTaskError(
+                "Failed to delete directory: {$path}"
+            );
         }
 
         return $success;
