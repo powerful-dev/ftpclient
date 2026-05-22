@@ -285,8 +285,11 @@ class FileMoveService
     }
 
 
-    private function moveToLocal(array $files, string $destDir): void
-    {
+    private function moveToLocal(
+        array $files,
+        string $destDir
+    ): void {
+
         $destDir = rtrim(
             $destDir,
             DIRECTORY_SEPARATOR
@@ -307,11 +310,7 @@ class FileMoveService
 
                 $moved = false;
 
-                // Fast path:
-                // atomic rename for files on same filesystem
-                //
-                // Directories are excluded because we support
-                // merge behavior for existing destination folders.
+                // Fast atomic move
                 if (
                     is_file($src) &&
                     $this->canUseRename($src, $dst)
@@ -320,15 +319,20 @@ class FileMoveService
                     clearstatcache(true, $src);
 
                     $moved = @rename($src, $dst);
+
+                    if (!$moved) {
+
+                        throw new \RuntimeException(
+                            "Failed atomic move: {$src}"
+                        );
+                    }
                 }
 
-                // Fallback move
+                // Recursive/file fallback
                 if (!$moved) {
 
                     if (is_dir($src)) {
 
-                        // Merge behavior:
-                        // existing directories are reused
                         if (!is_dir($dst)) {
 
                             if (
@@ -355,9 +359,10 @@ class FileMoveService
                     }
                 }
 
+                // Complete ONLY top-level item
                 $this->updateTask(function (&$task) use ($src) {
 
-                    $this->progress()->finishFile(
+                    $this->progress()->advanceItem(
                         $task,
                         $src
                     );
@@ -390,24 +395,73 @@ class FileMoveService
         return false;
     }
 
-    private function moveDirectory(string $src, string $dst): void
-    {
+    private function moveDirectory(
+        string $src,
+        string $dst
+    ): void {
+
         $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($src, \RecursiveDirectoryIterator::SKIP_DOTS),
+            new \RecursiveDirectoryIterator(
+                $src,
+                \RecursiveDirectoryIterator::SKIP_DOTS
+            ),
             \RecursiveIteratorIterator::SELF_FIRST
         );
 
         foreach ($iterator as $item) {
-            $subSrc  = $item->getPathname();
-            $relPath = ltrim(str_replace($src, '', $subSrc), '/\\');
-            $subDst  = $dst . DIRECTORY_SEPARATOR . $relPath;
+
+            $subSrc = $item->getPathname();
+
+            $relativePath = ltrim(
+                str_replace($src, '', $subSrc),
+                '/\\'
+            );
+
+            $subDst = PathHelper::normalize(
+                $dst . DIRECTORY_SEPARATOR . $relativePath
+            );
+
+            // Create directories
+            if ($item->isDir()) {
+
+                if (!is_dir($subDst)) {
+
+                    if (
+                        !@mkdir($subDst, 0777, true) &&
+                        !is_dir($subDst)
+                    ) {
+                        throw new \RuntimeException(
+                            "Failed to create directory: {$subDst}"
+                        );
+                    }
+                }
+
+                continue;
+            }
+
+            // Move files
+            $this->moveFile(
+                $subSrc,
+                $subDst
+            );
+        }
+
+        // Cleanup source directories
+        $cleanupIterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator(
+                $src,
+                \RecursiveDirectoryIterator::SKIP_DOTS
+            ),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($cleanupIterator as $item) {
 
             if ($item->isDir()) {
-                if (!is_dir($subDst)) {
-                    mkdir($subDst, 0777, true);
-                }
-            } else {
-                $this->moveFile($subSrc, $subDst);
+
+                @rmdir(
+                    $item->getPathname()
+                );
             }
         }
 

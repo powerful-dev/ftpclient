@@ -584,7 +584,7 @@ class JobWorker extends WorkerCore
        $this->handleInit(
             $command,
             'total_items',
-            fn($files) => FileHelper::calculateTotalFiles($files)
+            fn($files) => count($files)
         );
     }
 
@@ -1001,7 +1001,7 @@ class JobWorker extends WorkerCore
                         'event' => 'rename.error',
                         'type' => 'rename',
                         'panel' => $command['panel'] ?? null,
-                        'message' => "11111: " .  $e->getMessage(),
+                        'message' => $e->getMessage(),
                         'connection_id' => $command['connection_id'] ?? null,
                     ]);
 
