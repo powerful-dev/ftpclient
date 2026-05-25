@@ -148,6 +148,28 @@ class ProgressService
         $task['finished_at'] = microtime(true);
     }
 
+
+    public function finishItem(array &$task, string $file): void
+    {
+
+        if (!isset($task['files_progress'][$file])) {
+            $task['files_progress'][$file] = [];
+        }
+
+        // Idempotent protection
+        if (!empty($task['files_progress'][$file]['done'])) {
+            return;
+        }
+
+        $task['files_progress'][$file]['done'] = true;
+
+        $this->recalcProcessedItems($task);
+
+        $this->updateItemProgress($task);
+
+        $this->tryFinish($task);
+    }
+
     public function advanceItem(array &$task, string $file): void
     {
         $task['from'] = $file;
@@ -167,4 +189,26 @@ class ProgressService
         $this->tryFinish($task);
     }
 
+    private function updateItemProgress(array &$task): void
+    {
+        $total = max(1, $task['total_items'] ?? 1);
+
+        $task['progress'] = min(
+            100,
+            round(($task['processed_items'] / $total) * 100, 2)
+        );
+    }
+
+    private function recalcProcessedItems(array &$task): void
+    {
+        $count = 0;
+
+        foreach ($task['files_progress'] ?? [] as $file) {
+            if (!empty($file['done'])) {
+                $count++;
+            }
+        }
+
+        $task['processed_items'] = $count;
+    }
 }

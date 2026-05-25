@@ -23,6 +23,8 @@ class FileDownloadService
     private bool $overwriteAll = false;
     private bool $skipAll = false;
 
+    private bool $trackProgress = true;
+
     public function __construct(ConnectionService $connectionService, private EventService $events)
     {
         $this->connectionService = $connectionService;
@@ -74,7 +76,8 @@ class FileDownloadService
      */
     private function downloadRemoteFile(
         string $remotePath,
-        string $localPath
+        string $localPath,
+        bool $trackProgress = true
     ): void {
 
         $this->checkCancelled();
@@ -193,15 +196,6 @@ class FileDownloadService
                     ) {
                         return;
                     }
-
-                    $this->updateTask(function (&$task) use ($remotePath, $offset) {
-
-                        $this->progress()->advance(
-                            $task,
-                            $remotePath,
-                            $offset
-                        );
-                    });
                 },
 
                 function () {
@@ -211,15 +205,11 @@ class FileDownloadService
 
             $this->updateTask(function (&$task) use ($remotePath) {
 
-                $this->progress()->finishFile(
+                $this->progress()->finishItem(
                     $task,
-                    $remotePath
+                    PathHelper::decode($remotePath)
                 );
             });
-
-            logger()->info(
-                "⬇️ File downloaded: {$remotePath} → {$localPath}"
-            );
 
         } catch (TaskCancelledException $e) {
 
@@ -238,7 +228,8 @@ class FileDownloadService
 
     private function downloadRemoteDirectory(
         string $remoteDir,
-        string $localDir
+        string $localDir,
+        bool $trackProgress = true
     ): void {
         try {
             if (!is_dir($localDir)) {
@@ -256,14 +247,27 @@ class FileDownloadService
                 if ($item->isDir()) {
                     $this->downloadRemoteDirectory(
                         $remotePath,
-                        $localPath
+                        $localPath,
+                        false
                     );
                 } else if ($item->isFile()) {
                     $this->downloadRemoteFile(
                         $remotePath,
-                        $localPath
+                        $localPath,
+                        false
                     );
                 }
+            }
+
+            if ($trackProgress) {
+
+                $this->updateTask(function (&$task) use ($remoteDir) {
+
+                    $this->progress()->finishItem(
+                        $task,
+                        PathHelper::decode($remoteDir)
+                    );
+                });
             }
         } 
         catch (TaskCancelledException | ConflictException $e) {

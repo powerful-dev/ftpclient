@@ -1,38 +1,40 @@
 <?php
 
-require __DIR__ . '/../../vendor/autoload.php';
+require __DIR__.'/../../vendor/autoload.php';
 
 $workerName = $argv[1];
 
-use App\Workers\Core\WorkerCore;
-use App\Models\Connection;
-use App\Services\ConnectionService;
-use League\Flysystem\Filesystem;
-use App\Helpers\PathHelper;
-use App\Services\FileCopyService;
-use App\Services\FileDeleteService;
-use App\Services\FileMoveService;
-use App\Services\FileDownloadService;
-use App\Services\FileOpenerService;
-use League\Flysystem\FileAttributes;
-use App\Helpers\FileHelper;
 use App\DTO\ConnectionContext;
-use App\Support\Runtime;
+use App\Enums\TaskStatus;
+use App\Exceptions\ConflictException;
 use App\Exceptions\TaskCancelledException;
 use App\Exceptions\TaskPausedException;
-use App\Exceptions\ConflictException;
-use App\Enums\TaskStatus;
+use App\Helpers\FileHelper;
+use App\Helpers\PathHelper;
 use App\Helpers\TaskHelper;
+use App\Models\Connection;
+use App\Services\ConnectionService;
 use App\Services\EventService;
-
+use App\Services\FileCopyService;
+use App\Services\FileDeleteService;
+use App\Services\FileDownloadService;
+use App\Services\FileMoveService;
+use App\Services\FileOpenerService;
+use App\Support\Runtime;
+use App\Workers\Core\WorkerCore;
+use League\Flysystem\FileAttributes;
+use League\Flysystem\Filesystem;
 
 class JobWorker extends WorkerCore
 {
+    private array $connections = [];
 
-    private array $connections = []; 
     private string $commandsDir;
+
     private string $resultsDir;
+
     private string $tasksDir;
+
     private string $locksDir;
 
     /**
@@ -58,22 +60,22 @@ class JobWorker extends WorkerCore
 
         foreach ([
             'commandsDir' => 'commands',
-            'resultsDir'  => 'results',
-            'tasksDir'    => 'tasks',
-            'eventsDir'   => 'events',
-            'locksDir'    => 'locks',
-            'cacheDir'    => 'cache',
+            'resultsDir' => 'results',
+            'tasksDir' => 'tasks',
+            'eventsDir' => 'events',
+            'locksDir' => 'locks',
+            'cacheDir' => 'cache',
         ] as $property => $dir) {
             $path = Runtime::path($dir);
             $this->{$property} = $path;
 
-            if (!is_dir($path)) {
+            if (! is_dir($path)) {
                 mkdir($path, 0777, true);
             }
         }
 
         // restore commands that were in processing state after crash
-        foreach (glob($this->commandsDir . '/*.processing') as $file) {
+        foreach (glob($this->commandsDir.'/*.processing') as $file) {
             $original = substr($file, 0, -11); // remove ".processing"
             @rename($file, $original);
         }
@@ -95,10 +97,11 @@ class JobWorker extends WorkerCore
 
         try {
 
-            $files = array_slice(glob($this->commandsDir . '/*.json'), 0, 1);
+            $files = array_slice(glob($this->commandsDir.'/*.json'), 0, 1);
 
-            if (!$files) {
+            if (! $files) {
                 $this->idleLoops++;
+
                 return;
             }
 
@@ -109,14 +112,14 @@ class JobWorker extends WorkerCore
 
             foreach ($files as $file) {
 
-                if (!is_file($file)) {
+                if (! is_file($file)) {
                     continue;
                 }
 
-                $processing = $file . '.' . $myId . '.processing';
+                $processing = $file.'.'.$myId.'.processing';
 
                 // Atomic lock: only one worker can take the command
-                if (!@rename($file, $processing)) {
+                if (! @rename($file, $processing)) {
                     continue;
                 }
 
@@ -159,7 +162,7 @@ class JobWorker extends WorkerCore
                 if (json_last_error() !== JSON_ERROR_NONE) {
 
                     $this->log(
-                        "Invalid JSON in {$processing}: " .
+                        "Invalid JSON in {$processing}: ".
                         json_last_error_msg()
                     );
 
@@ -175,13 +178,14 @@ class JobWorker extends WorkerCore
                     continue;
                 }
 
-                if (!is_array($command) || empty($command['type'])) {
+                if (! is_array($command) || empty($command['type'])) {
 
                     $this->log("Invalid command structure: {$processing}");
 
                     if (is_file($processing)) {
                         @unlink($processing);
                     }
+
                     continue;
                 }
 
@@ -190,7 +194,7 @@ class JobWorker extends WorkerCore
 
                 $grouped[$groupKey][] = [
                     'file' => $processing,
-                    'command' => $command
+                    'command' => $command,
                 ];
             }
 
@@ -206,11 +210,11 @@ class JobWorker extends WorkerCore
                     if ($connectionKey !== 'local') {
 
                         $slot = $this->acquireConnectionSlot(
-                            (int)$connectionKey,
+                            (int) $connectionKey,
                             2
                         );
 
-                        if (!$slot) {
+                        if (! $slot) {
 
                             // Return commands back to queue
                             foreach ($commands as $item) {
@@ -234,7 +238,7 @@ class JobWorker extends WorkerCore
 
                     $fsConnectionId = $connectionKey === 'local'
                         ? null
-                        : (int)$connectionKey;
+                        : (int) $connectionKey;
 
                     if ($fsConnectionId !== null) {
                         $this->getConnection($fsConnectionId);
@@ -287,13 +291,13 @@ class JobWorker extends WorkerCore
                         }
                     }
 
-                } catch (\Throwable $e) {
+                } catch (Throwable $e) {
 
                     // =========================
                     // Connection / execution error
                     // =========================
                     $this->log(
-                        "Connection {$connectionKey} failed: " .
+                        "Connection {$connectionKey} failed: ".
                         $e->getMessage()
                     );
 
@@ -309,13 +313,13 @@ class JobWorker extends WorkerCore
                         $connLabel = $command['connection_id'] ?? 'local';
 
                         $fileName =
-                            "{$command['type']}_{$connLabel}_" .
+                            "{$command['type']}_{$connLabel}_".
                             "{$command['operation_id']}.json";
 
                         $this->writeResult($fileName, [
                             'ok' => false,
                             'data' => null,
-                            'error' => "Connection failed: " . $e->getMessage()
+                            'error' => 'Connection failed: '.$e->getMessage(),
                         ]);
                     }
 
@@ -330,9 +334,9 @@ class JobWorker extends WorkerCore
                 }
             }
 
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
 
-            $this->log("WORKER CRASH: " . $e->getMessage());
+            $this->log('WORKER CRASH: '.$e->getMessage());
         }
     }
 
@@ -348,9 +352,9 @@ class JobWorker extends WorkerCore
             $taskId,
             function () use ($command, $taskId, $field, $calculator) {
 
-                $file = $this->tasksDir . "/{$taskId}.json";
+                $file = $this->tasksDir."/{$taskId}.json";
 
-                if (!file_exists($file)) {
+                if (! file_exists($file)) {
                     return false;
                 }
 
@@ -358,7 +362,7 @@ class JobWorker extends WorkerCore
                 $task = json_decode($raw, true) ?: [];
 
                 // already initialized → skip
-                if (!empty($task[$field])) {
+                if (! empty($task[$field])) {
                     return true;
                 }
 
@@ -377,7 +381,7 @@ class JobWorker extends WorkerCore
         $this->handleInit(
             $command,
             'total_bytes',
-            fn($files) => FileHelper::calculateTotalBytes($files)
+            fn ($files) => FileHelper::calculateTotalBytes($files)
         );
     }
 
@@ -389,7 +393,7 @@ class JobWorker extends WorkerCore
 
         $ctx = null;
 
-        if (!empty($connectionId)) {
+        if (! empty($connectionId)) {
             $ctx = $this->getConnectionContext($connectionId);
 
             /**
@@ -414,10 +418,22 @@ class JobWorker extends WorkerCore
     private function handleCopy(array $command): void
     {
         $taskId = $command['task_id'];
-        $task = TaskHelper::read($this->tasksDir . "/{$taskId}.json") ?? [];
+        $task = TaskHelper::read($this->tasksDir."/{$taskId}.json") ?? [];
+
+        // Race condition guard: with multiple workers, copy may be picked up before
+        // init_copy finishes writing total_bytes. Wait up to 2s for init to complete.
+        if (empty($task['total_bytes'])) {
+            for ($retry = 0; $retry < 10; $retry++) {
+                usleep(200_000); // 200ms
+                $task = TaskHelper::read($this->tasksDir."/{$taskId}.json") ?? [];
+                if (! empty($task['total_bytes'])) {
+                    break;
+                }
+            }
+        }
 
         if (empty($task['total_bytes'])) {
-            throw new \RuntimeException('Total bytes not initialized yet');
+            throw new RuntimeException('Total bytes not initialized yet');
         }
 
         $this->executeCommand(
@@ -439,19 +455,30 @@ class JobWorker extends WorkerCore
     private function handleResume(array $command): void
     {
         $taskId = $command['task_id'];
-        $task = TaskHelper::read($this->tasksDir . "/{$taskId}.json") ?? [];
+        $task = TaskHelper::read($this->tasksDir."/{$taskId}.json") ?? [];
+
+        // Race condition guard: same as handleCopy — init may not have written total_bytes yet.
+        if ($task['type'] === 'copy' && empty($task['total_bytes'])) {
+            for ($retry = 0; $retry < 10; $retry++) {
+                usleep(200_000); // 200ms
+                $task = TaskHelper::read($this->tasksDir."/{$taskId}.json") ?? [];
+                if (! empty($task['total_bytes'])) {
+                    break;
+                }
+            }
+        }
 
         if (
             $task['type'] === 'copy' &&
             empty($task['total_bytes'])
         ) {
-            throw new \RuntimeException(
+            throw new RuntimeException(
                 'Total bytes not initialized yet'
             );
         }
 
         TaskHelper::update($taskId, function (&$task) {
-            if (!empty($task['paused_at'])) {
+            if (! empty($task['paused_at'])) {
 
                 $task['total_paused_seconds'] +=
                     time() - $task['paused_at'];
@@ -511,7 +538,7 @@ class JobWorker extends WorkerCore
                         $command
                     ),
 
-                    default => $this->log("unsuported type: " . $task['type']),
+                    default => $this->log('unsuported type: '.$task['type']),
                 };
             }
         );
@@ -554,15 +581,15 @@ class JobWorker extends WorkerCore
         $this->handleInit(
             $command,
             'total_items',
-            fn($files) => count($files)
+            fn ($files) => count($files)
         );
     }
 
     private function handleDelete(array $command): void
     {
         $this->executeCommand(
-            $this->resultFileName($command), 
-            $command['task_id'] ?? null, 
+            $this->resultFileName($command),
+            $command['task_id'] ?? null,
             function () use ($command) {
 
                 return $this->runWithConnection($command, function ($ctx) use ($command) {
@@ -576,12 +603,12 @@ class JobWorker extends WorkerCore
 
                     return true;
                 });
-        });
+            });
     }
 
     private function handleInitMove(array $command)
     {
-       $this->handleInit(
+        $this->handleInit(
             $command,
             'total_items',
             fn($files) => count($files)
@@ -593,7 +620,7 @@ class JobWorker extends WorkerCore
         $taskId = $command['task_id'];
 
         $task = TaskHelper::read(
-            $this->tasksDir . "/{$taskId}.json"
+            $this->tasksDir."/{$taskId}.json"
         ) ?? [];
 
         $this->executeCommand(
@@ -670,13 +697,13 @@ class JobWorker extends WorkerCore
     {
 
         if (empty(($command['connection_id'] ?? null))) {
-            throw new \RuntimeException('Empty connection!');
+            throw new RuntimeException('Empty connection!');
         }
 
         $taskId = $command['task_id'];
 
         $task = TaskHelper::read(
-            $this->tasksDir . "/{$taskId}.json"
+            $this->tasksDir."/{$taskId}.json"
         ) ?? [];
 
         $this->executeCommand(
@@ -746,11 +773,10 @@ class JobWorker extends WorkerCore
 
     private function handleOpen(array $command): void
     {
-        
 
         $this->executeCommand(
-            $this->resultFileName($command), 
-            $command['task_id'] ?? null, 
+            $this->resultFileName($command),
+            $command['task_id'] ?? null,
             function () use ($command) {
 
                 return $this->runWithConnection($command, function ($ctx) use ($command) {
@@ -758,7 +784,7 @@ class JobWorker extends WorkerCore
                     $files = $command['payload']['files'] ?? [];
 
                     if (count($files) !== 1) {
-                        throw new \RuntimeException('Open operation supports only one file');
+                        throw new RuntimeException('Open operation supports only one file');
                     }
 
                     $file = $files[0];
@@ -768,11 +794,12 @@ class JobWorker extends WorkerCore
                         $command['payload']['options']['openInExplorer'] ?? false,
                         $command['task_id'],
                         $ctx?->fs,
+                        $command['payload']['options'] ?? [],
                     );
 
                     return true;
                 });
-        });
+            });
     }
 
     private function handleCreateDirectory(array $command): bool
@@ -807,7 +834,7 @@ class JobWorker extends WorkerCore
                             );
                         }
 
-                        if (!mkdir($path, 0777, true)) {
+                        if (! mkdir($path, 0777, true)) {
                             throw new RuntimeException(
                                 'Failed to create directory'
                             );
@@ -826,7 +853,7 @@ class JobWorker extends WorkerCore
 
                     return true;
 
-                } catch (\Throwable $e) {
+                } catch (Throwable $e) {
 
                     // Notify UI about failure
                     app(EventService::class)->emit([
@@ -886,9 +913,9 @@ class JobWorker extends WorkerCore
 
                         $dir = dirname($path);
 
-                        if (!is_dir($dir)) {
+                        if (! is_dir($dir)) {
 
-                            if (!mkdir($dir, 0777, true)) {
+                            if (! mkdir($dir, 0777, true)) {
                                 throw new RuntimeException(
                                     'Failed to create parent directory'
                                 );
@@ -910,7 +937,7 @@ class JobWorker extends WorkerCore
                             restore_error_handler();
                         }
 
-                        if (!$result) {
+                        if (! $result) {
                             throw new RuntimeException(
                                 'Failed to create file'
                             );
@@ -927,10 +954,9 @@ class JobWorker extends WorkerCore
                         'connection_id' => $command['connection_id'] ?? null,
                     ]);
 
-
                     return true;
 
-                } catch (\Throwable $e) {
+                } catch (Throwable $e) {
 
                     // Notify UI about failure
                     app(EventService::class)->emit([
@@ -980,7 +1006,7 @@ class JobWorker extends WorkerCore
                             throw new RuntimeException('Target already exists');
                         }
 
-                        if (!rename($oldPath, $newPath)) {
+                        if (! rename($oldPath, $newPath)) {
                             throw new RuntimeException('Failed to rename');
                         }
                     }
@@ -1015,13 +1041,15 @@ class JobWorker extends WorkerCore
     {
         if (isset($this->connections[$id])) {
             $this->log("Connection {$id} already exists");
+
             return;
         }
 
         $model = Connection::find($id);
 
-        if (!$model) {
+        if (! $model) {
             $this->log("Connection {$id} not found in DB");
+
             return;
         }
 
@@ -1030,8 +1058,8 @@ class JobWorker extends WorkerCore
             $service = app(ConnectionService::class);
             $adapter = $service->getAdapter($model);
 
-            if (!$adapter) {
-                throw new \RuntimeException("Adapter creation failed");
+            if (! $adapter) {
+                throw new RuntimeException('Adapter creation failed');
             }
 
             $filesystem = new Filesystem($adapter);
@@ -1041,18 +1069,18 @@ class JobWorker extends WorkerCore
 
             $this->log("Connection {$id} CREATED and stored in memory");
 
-            $this->log("Connections in memory: " . json_encode(array_keys($this->connections)));
+            $this->log('Connections in memory: '.json_encode(array_keys($this->connections)));
 
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
 
-            $this->log("Connection {$id} FAILED: " . $e->getMessage());
+            $this->log("Connection {$id} FAILED: ".$e->getMessage());
         }
     }
 
     private function handleListCommand(array $command): void
     {
-        $connection_id = (int)$command['connection_id'];
-        $operation_id  = $command['operation_id'];
+        $connection_id = (int) $command['connection_id'];
+        $operation_id = $command['operation_id'];
         $fileName = "list_{$connection_id}_{$operation_id}.json";
         $path = PathHelper::encode($command['path'] ?? '/');
 
@@ -1098,7 +1126,7 @@ class JobWorker extends WorkerCore
     {
 
         file_put_contents(
-            $this->resultsDir . "/" . $fileName,
+            $this->resultsDir.'/'.$fileName,
             json_encode(
                 $data,
                 JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE
@@ -1127,7 +1155,7 @@ class JobWorker extends WorkerCore
             $this->writeResult($fileName, [
                 'ok' => true,
                 'data' => $result,
-                'error' => null
+                'error' => null,
             ]);
 
             $this->log("COMMAND OK {$fileName}, worker: {$this->workerName}");
@@ -1143,17 +1171,17 @@ class JobWorker extends WorkerCore
                 'meta' => ['status' => 'cancelled'],
             ]);
 
-            return; 
+            return;
 
         } catch (TaskPausedException $e) {
 
             $this->log("TASK {$taskId} paused, worker: {$this->workerName}");
 
             if ($taskId) {
-                \App\Helpers\TaskHelper::update($taskId, function (&$task) {
+                TaskHelper::update($taskId, function (&$task) {
 
-                    if (($task['status'] ?? null) !== \App\Enums\TaskStatus::PAUSED->value) {
-                        $task['status'] = \App\Enums\TaskStatus::PAUSED->value;
+                    if (($task['status'] ?? null) !== TaskStatus::PAUSED->value) {
+                        $task['status'] = TaskStatus::PAUSED->value;
                         $task['paused_at'] = time();
                     }
                 });
@@ -1168,26 +1196,25 @@ class JobWorker extends WorkerCore
 
             return;
 
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
 
             $this->writeResult($fileName, [
                 'ok' => false,
                 'data' => null,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
-            $this->log("COMMAND FAILED {$fileName}, worker: {$this->workerName}: " . $e->getMessage());
+            $this->log("COMMAND FAILED {$fileName}, worker: {$this->workerName}: ".$e->getMessage());
         }
     }
 
-
     /**
-    * Get or restore connection (Filesystem + Adapter)
-    *
-    * @param int $connection_id
-    * @return array{fs: \League\Flysystem\Filesystem, adapter: mixed}
-    * @throws \RuntimeException
-    */
+     * Get or restore connection (Filesystem + Adapter)
+     *
+     * @return array{fs: Filesystem, adapter: mixed}
+     *
+     * @throws RuntimeException
+     */
     private function getConnection(int $connection_id): array
     {
         $attempts = 0;
@@ -1195,7 +1222,7 @@ class JobWorker extends WorkerCore
         while ($attempts < 3) {
 
             // если нет в памяти — создаём
-            if (!isset($this->connections[$connection_id])) {
+            if (! isset($this->connections[$connection_id])) {
                 $this->handleConnect($connection_id);
             }
 
@@ -1204,20 +1231,20 @@ class JobWorker extends WorkerCore
 
                 // защита от кривого состояния
                 if (
-                    !is_array($conn) ||
-                    !isset($conn['fs'], $conn['adapter'])
+                    ! is_array($conn) ||
+                    ! isset($conn['fs'], $conn['adapter'])
                 ) {
-                    throw new \RuntimeException("Invalid connection structure");
+                    throw new RuntimeException('Invalid connection structure');
                 }
 
-                //$fs = $conn['fs'];
+                // $fs = $conn['fs'];
 
                 // "пинг" соединения
-                //$fs->directoryExists('/');
+                // $fs->directoryExists('/');
 
                 return $conn;
 
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
 
                 $this->log("Connection {$connection_id} lost, reconnecting...");
 
@@ -1231,7 +1258,7 @@ class JobWorker extends WorkerCore
             }
         }
 
-        throw new \RuntimeException("Connection {$connection_id} failed after reconnect attempts");
+        throw new RuntimeException("Connection {$connection_id} failed after reconnect attempts");
     }
 
     // private function getConnection(int $connection_id): array
@@ -1277,7 +1304,7 @@ class JobWorker extends WorkerCore
     {
         for ($i = 0; $i < $maxSlots; $i++) {
 
-            $lockFile = $this->locksDir . "/conn_{$connectionId}_{$i}.lock";
+            $lockFile = $this->locksDir."/conn_{$connectionId}_{$i}.lock";
 
             $fp = fopen($lockFile, 'c');
 
@@ -1290,7 +1317,7 @@ class JobWorker extends WorkerCore
             }
         }
 
-        return null; 
+        return null;
     }
 
     private function releaseConnectionSlot($fp): void
@@ -1319,7 +1346,7 @@ class JobWorker extends WorkerCore
 
         foreach ($this->connections as $id => $conn) {
 
-            if (!isset($this->connectionLastUsed[$id])) {
+            if (! isset($this->connectionLastUsed[$id])) {
                 continue;
             }
 
@@ -1331,7 +1358,7 @@ class JobWorker extends WorkerCore
                 unset($this->connectionLastUsed[$id]);
 
                 $this->log("Connection {$id} AUTO-CLOSED (idle)");
-                $this->log("Connections in memory: " . json_encode(array_keys($this->connections)));
+                $this->log('Connections in memory: '.json_encode(array_keys($this->connections)));
             }
         }
     }
